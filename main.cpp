@@ -77,6 +77,9 @@ public:
     string getFileName() {
         return file_name;
     }
+    bool getInUse() const {
+        return inUse;
+    }
 
 };
 
@@ -94,15 +97,16 @@ class fsDisk {
     int BitVectorSize;
     int *BitVector;
 
-    // (5) MainDir --
-    // Structure that links the file name to its FsFile
+    // MainDir - "file" (FsFile) vector, store all the files in the disk.
+    // map that links the file name to its FsFile
+    map<string, FileDescriptor> MainDir;
 
+    vector<FileDescriptor> OpenFileDescriptors;
     // (6) OpenFileDescriptors --
     //  when you open a file,
     // the operating system creates an entry to represent that file
     // This entry number is the file descriptor.
-
-    // ------------------------------------------------------------------------
+public:
     fsDisk() {
         sim_disk_fd = fopen(DISK_SIM_FILE, "r+");
         assert(sim_disk_fd);
@@ -120,14 +124,13 @@ class fsDisk {
     // ------------------------------------------------------------------------
     void listAll() {
         int i = 0;
-
-/*        for (.... ALL
-        FILE DESCRIPTORS .... ) {
-            cout << "index: " << i << ": FileName: " << .. FILE NAME ...  <<  " , isInUse: " << ... IS
-            IN
-            USED ... << endl;
+        for (auto curFile = MainDir.begin(); curFile != MainDir.end(); curFile++) {
+            cout << i << ": " << curFile->first << endl;
+            cout << "index: " << i << ": FileName: " << curFile->first
+                 << " , isInUse: " << curFile->second.getInUse() << endl;
             i++;
-        }*/
+        }
+
 
         char bufy;
         cout << "Disk content: '";
@@ -152,13 +155,16 @@ class fsDisk {
      * returns the file_descriptor
      * */
     int CreateFile(string fileName) { //@TODO IF DISK IS NOT CREATED, RETURN -1
-        int fd = open(fileName,);
+        if(!is_formated)
+            return -1;
+
 
     }
 
     /*If file is not open then open and return fileDescriptor
      *else */
     int OpenFile(string fileName) {
+
 
     }
 
@@ -175,7 +181,7 @@ class fsDisk {
      */
     int WriteToFile(int fd, char *buf, int len) {
 
-        write(fd,buf,len);
+        write(fd, buf, len);
 
     }
 
@@ -194,76 +200,72 @@ class fsDisk {
 
 int main() {
 
-    int x = 10;
-    assert(x==1);
-    cout << "Hello";
+    int blockSize;
+    int direct_entries;
+    string fileName;
+    char str_to_write[DISK_SIZE];
+    char str_to_read[DISK_SIZE];
+    int size_to_read;
+    int _fd;
 
-//    int blockSize;
-//    int direct_entries;
-//    string fileName;
-//    char str_to_write[DISK_SIZE];
-//    char str_to_read[DISK_SIZE];
-//    int size_to_read;
-//    int _fd;
-//
-//    fsDisk *fs = new fsDisk();
-//    int cmd_;
-//    while (1) {
-//        cin >> cmd_;
-//        switch (cmd_) {
-//            case 0:   // exit
-//                delete fs;
-//                exit(0);
-//                break;
-//
-//            case 1:  // list-file
-//                fs->listAll();
-//                break;
-//
-//            case 2:    // format
-//                cin >> blockSize;
-//                fs->fsFormat(blockSize);
-//                break;
-//
-//            case 3:    // creat-file
-//                cin >> fileName;
-//                _fd = fs->CreateFile(fileName);
-//                cout << "CreateFile: " << fileName << " with File Descriptor #: " << _fd << endl;
-//                break;
-//
-//            case 4:  // open-file
-//                cin >> fileName;
-//                _fd = fs->OpenFile(fileName);
-//                cout << "OpenFile: " << fileName << " with File Descriptor #: " << _fd << endl;
-//                break;
-//
-//            case 5:  // close-file
-//                cin >> _fd;
-//                fileName = fs->CloseFile(_fd);
-//                cout << "CloseFile: " << fileName << " with File Descriptor #: " << _fd << endl;
-//                break;
-//
-//            case 6:   // write-file
-//                cin >> _fd;
-//                cin >> str_to_write;
-//                fs->WriteToFile(_fd, str_to_write, strlen(str_to_write));
-//                break;
-//
-//            case 7:    // read-file
-//                cin >> _fd;
-//                cin >> size_to_read;
-//                fs->ReadFromFile(_fd, str_to_read, size_to_read);
-//                cout << "ReadFromFile: " << str_to_read << endl;
-//                break;
-//
-//            case 8:   // delete file
-//                cin >> fileName;
-//                _fd = fs->DelFile(fileName);
-//                cout << "DeletedFile: " << fileName << " with File Descriptor #: " << _fd << endl;
-//                break;
-//            default:
-//                break;
-//        }
-//    }
-//
+    fsDisk *fs = new fsDisk();
+    int cmd_;
+    while (true) {
+        cin >> cmd_;
+        switch (cmd_) {
+            case 0:   // exit
+                delete fs;
+                exit(0);
+                break;
+
+            case 1:  // list-file
+                fs->listAll();
+                break;
+
+            case 2:    // format
+                cin >> blockSize;
+                fs->fsFormat(blockSize);
+                break;
+
+            case 3:    // creat-file
+                cin >> fileName;
+                _fd = fs->CreateFile(fileName);
+                cout << "CreateFile: " << fileName << " with File Descriptor #: " << _fd << endl;
+                break;
+
+            case 4:  // open-file
+                cin >> fileName;
+                _fd = fs->OpenFile(fileName);
+                cout << "OpenFile: " << fileName << " with File Descriptor #: " << _fd << endl;
+                break;
+
+            case 5:  // close-file
+                cin >> _fd;
+                fileName = fs->CloseFile(_fd);
+                cout << "CloseFile: " << fileName << " with File Descriptor #: " << _fd << endl;
+                break;
+
+            case 6:   // write-file
+                cin >> _fd;
+                cin >> str_to_write;
+                fs->WriteToFile(_fd, str_to_write, strlen(str_to_write));
+                break;
+
+            case 7:    // read-file
+                cin >> _fd;
+                cin >> size_to_read;
+                fs->ReadFromFile(_fd, str_to_read, size_to_read);
+                cout << "ReadFromFile: " << str_to_read << endl;
+                break;
+
+            case 8:   // delete file
+                cin >> fileName;
+                _fd = fs->DelFile(fileName);
+                cout << "DeletedFile: " << fileName << " with File Descriptor #: " << _fd << endl;
+                break;
+            default:
+                break;
+        }
+    }
+
 }
