@@ -77,6 +77,7 @@ public:
     string getFileName() {
         return file_name;
     }
+
     bool getInUse() const {
         return inUse;
     }
@@ -99,9 +100,9 @@ class fsDisk {
 
     // MainDir - "file" (FsFile) vector, store all the files in the disk.
     // map that links the file name to its FsFile
-    map<string, FileDescriptor> MainDir;
+    map<string, FileDescriptor*> MainDir;
 
-    vector<FileDescriptor> OpenFileDescriptors;
+    vector<FileDescriptor*> OpenFileDescriptors;
     // (6) OpenFileDescriptors --
     //  when you open a file,
     // the operating system creates an entry to represent that file
@@ -127,7 +128,7 @@ public:
         for (auto curFile = MainDir.begin(); curFile != MainDir.end(); curFile++) {
             cout << i << ": " << curFile->first << endl;
             cout << "index: " << i << ": FileName: " << curFile->first
-                 << " , isInUse: " << curFile->second.getInUse() << endl;
+                 << " , isInUse: " << curFile->second->getInUse() << endl;
             i++;
         }
 
@@ -147,18 +148,26 @@ public:
 
     // ------------------------------------------------------------------------
     void fsFormat(int blockSize = 4) {
-
-
+        BitVectorSize = DISK_SIZE / blockSize;
+        BitVector = new int[BitVectorSize];
+        for (int i = 0; i < BitVectorSize; i++) {
+            BitVector[i] = 0;
+        }
+        is_formated = true;
     }
 
     /*Function to create a new file (fsFile) and update OpenFileDescriptors and MainDir and also keeps file Open
      * returns the file_descriptor
      * */
     int CreateFile(string fileName) { //@TODO IF DISK IS NOT CREATED, RETURN -1
-        if(!is_formated)
+        if (!is_formated)
             return -1;
-
-
+        int BlockSize = DISK_SIZE / BitVectorSize;
+        FsFile *file = new FsFile{BlockSize};
+        FileDescriptor *fd= new FileDescriptor {fileName,file};
+        OpenFileDescriptors.push_back(fd);
+        MainDir.insert({move(fileName), fd});
+        return OpenFileDescriptors.size()-1;
     }
 
     /*If file is not open then open and return fileDescriptor
@@ -210,6 +219,7 @@ int main() {
 
     fsDisk *fs = new fsDisk();
     int cmd_;
+
     while (true) {
         cin >> cmd_;
         switch (cmd_) {
