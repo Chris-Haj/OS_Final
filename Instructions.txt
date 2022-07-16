@@ -1,0 +1,9 @@
+0: Exit program
+1: List all
+2: FormatDisk
+3: Create file
+4: Open file
+5: Close file
+6: Write file
+7: Read file
+8: Delete file

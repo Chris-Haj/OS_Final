@@ -101,8 +101,12 @@ class fsDisk {
     // MainDir - "file" (FsFile) vector, store all the files in the disk.
     // map that links the file name to its FsFile
     map<string, FileDescriptor*> MainDir;
+    typedef struct {
+        int fd;
+        FileDescriptor *fd_ptr;
+    } OpenFDS;
 
-    vector<FileDescriptor*> OpenFileDescriptors;
+    vector<OpenFDS> OpenFileDescriptors;
     // (6) OpenFileDescriptors --
     //  when you open a file,
     // the operating system creates an entry to represent that file
@@ -123,7 +127,7 @@ public:
     }
 
     // ------------------------------------------------------------------------
-    void listAll() {
+    void listAll() {//fun1
         int i = 0;
         for (auto curFile = MainDir.begin(); curFile != MainDir.end(); curFile++) {
             cout << i << ": " << curFile->first << endl;
@@ -131,8 +135,6 @@ public:
                  << " , isInUse: " << curFile->second->getInUse() << endl;
             i++;
         }
-
-
         char bufy;
         cout << "Disk content: '";
         for (i = 0; i < DISK_SIZE; i++) {
@@ -147,8 +149,9 @@ public:
 
 
     // ------------------------------------------------------------------------
-    void fsFormat(int blockSize = 4) {
+    void fsFormat(int blockSize = 4) {//fun2
         BitVectorSize = DISK_SIZE / blockSize;
+        cout << "FORMAT DISK: number of blocks: " << BitVectorSize << endl;
         BitVector = new int[BitVectorSize];
         for (int i = 0; i < BitVectorSize; i++) {
             BitVector[i] = 0;
@@ -159,7 +162,7 @@ public:
     /*Function to create a new file (fsFile) and update OpenFileDescriptors and MainDir and also keeps file Open
      * returns the file_descriptor
      * */
-    int CreateFile(string fileName) { //@TODO IF DISK IS NOT CREATED, RETURN -1
+    int CreateFile(string fileName) { //fun3
         if (!is_formated)
             return -1;
         int BlockSize = DISK_SIZE / BitVectorSize;
@@ -172,13 +175,18 @@ public:
 
     /*If file is not open then open and return fileDescriptor
      *else */
-    int OpenFile(string fileName) {
+    int OpenFile(string fileName) {//fun3
+
 
 
     }
 
     // ------------------------------------------------------------------------
-    string CloseFile(int fd) {
+    string CloseFile(int fd) { //fun4
+        if (fd < 0 || fd >= OpenFileDescriptors.size())
+            return "";
+//        OpenFileDescriptors[fd]->inUse = false;
+        return OpenFileDescriptors[fd]->getFileName();
 
     }
 
