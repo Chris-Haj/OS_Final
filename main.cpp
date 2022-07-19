@@ -101,16 +101,29 @@ class fsDisk {
     // MainDir - "file" (FsFile) vector, store all the files in the disk.
     // map that links the file name to its FsFile
     map<string, FileDescriptor*> MainDir;
-    typedef struct {
-        int fd;
-        FileDescriptor *fd_ptr;
-    } OpenFDS;
 
-    vector<OpenFDS> OpenFileDescriptors;
+
+    map<int,FileDescriptor*> OpenFileDescriptors;
     // (6) OpenFileDescriptors --
     //  when you open a file,
     // the operating system creates an entry to represent that file
     // This entry number is the file descriptor.
+    int FindEmptyIndex(map<int, FileDescriptor *> ma){
+        if(ma.size()==0)
+            return 0;
+        int cur=ma.begin()->first;
+        int back = -1;
+        for(auto it = ++ma.begin(); it != ma.end(); it++){
+            if(cur-back==1){
+                back = cur;
+                cur=it->first;
+            }
+            else{
+                return back+1;
+            }
+        }
+        return cur+1;
+    }
 public:
     fsDisk() {
         sim_disk_fd = fopen(DISK_SIM_FILE, "r+");
@@ -168,13 +181,11 @@ public:
         int BlockSize = DISK_SIZE / BitVectorSize;
         FsFile *file = new FsFile{BlockSize};
         FileDescriptor *fd= new FileDescriptor {fileName,file};
-        OpenFileDescriptors.push_back(fd);
+        OpenFileDescriptors.insert({FindEmptyIndex(OpenFileDescriptors),fd});
         MainDir.insert({move(fileName), fd});
         return OpenFileDescriptors.size()-1;
     }
 
-    /*If file is not open then open and return fileDescriptor
-     *else */
     int OpenFile(string fileName) {//fun3
 
 
@@ -183,10 +194,6 @@ public:
 
     // ------------------------------------------------------------------------
     string CloseFile(int fd) { //fun4
-        if (fd < 0 || fd >= OpenFileDescriptors.size())
-            return "";
-//        OpenFileDescriptors[fd]->inUse = false;
-        return OpenFileDescriptors[fd]->getFileName();
 
     }
 
