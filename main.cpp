@@ -43,18 +43,44 @@ class FsFile {
     int block_in_use;
     int index_block;
     int block_size;
-
 public:
     FsFile(int _block_size) {
         file_size = 0;
         block_in_use = 0;
         block_size = _block_size;
         index_block = -1;
-        //@TODO MUST ADD MORE FUNCTIONS
     }
 
-    int getfile_size() {
+    int getFileSize() const {
         return file_size;
+    }
+
+    void setFileSize(int fileSize) {
+        file_size = fileSize;
+    }
+
+    int getBlockInUse() const {
+        return block_in_use;
+    }
+
+    void setBlockInUse(int blockInUse) {
+        block_in_use = blockInUse;
+    }
+
+    int getIndexBlock() const {
+        return index_block;
+    }
+
+    void setIndexBlock(int indexBlock) {
+        index_block = indexBlock;
+    }
+
+    int getBlockSize() const {
+        return block_size;
+    }
+
+    void setBlockSize(int blockSize) {
+        block_size = blockSize;
     }
 
 };
@@ -82,6 +108,12 @@ public:
         return inUse;
     }
 
+    void setInUse(bool use) {
+        inUse = use;
+    }
+    FsFile *getFile(){
+        return fs_file;
+    }
 };
 
 #define DISK_SIM_FILE "DISK_SIM_FILE.txt"
@@ -100,30 +132,32 @@ class fsDisk {
 
     // MainDir - "file" (FsFile) vector, store all the files in the disk.
     // map that links the file name to its FsFile
-    map<string, FileDescriptor*> MainDir;
+    map<string, FileDescriptor *> MainDir;
 
 
-    map<int,FileDescriptor*> OpenFileDescriptors;
+    map<int, FileDescriptor *> OpenFileDescriptors;
+
     // (6) OpenFileDescriptors --
     //  when you open a file,
     // the operating system creates an entry to represent that file
     // This entry number is the file descriptor.
-    int FindEmptyIndex(map<int, FileDescriptor *> ma){
-        if(ma.size()==0)
+    int FindEmptyIndex(map<int, FileDescriptor *> ma) {
+        if (ma.size() == 0)
             return 0;
-        int cur=ma.begin()->first;
+        int cur = ma.begin()->first;
         int back = -1;
-        for(auto it = ++ma.begin(); it != ma.end(); it++){
-            if(cur-back==1){
+        for (auto it = ++ma.begin(); it != ma.end(); it++) {
+            if (cur - back == 1) {
                 back = cur;
-                cur=it->first;
-            }
-            else{
-                return back+1;
+                cur = it->first;
+            } else {
+                return back + 1;
             }
         }
-        return cur+1;
+        return cur + 1;
     }
+
+
 public:
     fsDisk() {
         sim_disk_fd = fopen(DISK_SIM_FILE, "r+");
@@ -180,21 +214,37 @@ public:
             return -1;
         int BlockSize = DISK_SIZE / BitVectorSize;
         FsFile *file = new FsFile{BlockSize};
-        FileDescriptor *fd= new FileDescriptor {fileName,file};
-        OpenFileDescriptors.insert({FindEmptyIndex(OpenFileDescriptors),fd});
+        FileDescriptor *fd = new FileDescriptor{fileName, file};
+        int FileDescIndex = FindEmptyIndex(OpenFileDescriptors);
+        OpenFileDescriptors.insert({FileDescIndex, fd});
         MainDir.insert({move(fileName), fd});
-        return OpenFileDescriptors.size()-1;
+        return FileDescIndex;
     }
 
-    int OpenFile(string fileName) {//fun3
-
-
-
+    int OpenFile(string fileName) {//fun4
+        if (MainDir.find(fileName) == MainDir.end()) {
+            cout << "File does not exist!" << endl;
+            return -1;
+        }
+        if (MainDir[fileName]->getInUse()) {
+            cout << "File is already open!" << endl;
+            return -1;
+        }
+        int FileDescIndex = FindEmptyIndex(OpenFileDescriptors);
+        OpenFileDescriptors.insert({FileDescIndex, MainDir[fileName]});
+        MainDir[fileName]->setInUse(true);
+        return FileDescIndex;
     }
 
     // ------------------------------------------------------------------------
-    string CloseFile(int fd) { //fun4
-
+    string CloseFile(int fd) { //fun5
+        if (OpenFileDescriptors.find(fd) == OpenFileDescriptors.end()) {
+            cout << "FileDescriptor does not exist!" << endl;
+            return "-1";
+        }
+        string FileName = OpenFileDescriptors[fd]->getFileName();
+        OpenFileDescriptors.erase(fd);
+        return FileName;
     }
 
     /*
@@ -203,19 +253,49 @@ public:
      3) File must have space
      4) Disk must be initialized
      */
-    int WriteToFile(int fd, char *buf, int len) {
+    int WriteToFile(int fd, char *buf, int len) {//fun6
+        if (!is_formated) { //If disk is not formatted
+            cout << "Disk is not formatted!" << endl;
+            return -1;
+        }
+        if (OpenFileDescriptors.find(fd) == OpenFileDescriptors.end()) { // If File is not open
+            cout << "File is not open!" << endl;
+            return -1;
+        }
+        if(OpenFileDescriptors[fd]->getFile()->getFileSize()==0){
+            FsFile *file = OpenFileDescriptors[fd]->getFile();
+            int i=0;
+            while(BitVector[i]==1) //Find Empty Position in BitVector
+                i++;
+            /*Start of file is BitVector Index * BlockSize */
+            file->setIndexBlock(i*file->getBlockSize());
 
-        write(fd, buf, len);
+
+        }
+
+
 
     }
 
     // ------------------------------------------------------------------------
-    int DelFile(string FileName) {
+    int DelFile(string FileName) {//fun7
+        if (MainDir.find(FileName) == MainDir.end()) {
+            cout << "File does not exist" << endl;
+            return -1;
+        }
+        if (MainDir[FileName]->getInUse()) {
+            cout << "Cannot delete a file that is open!" << endl;
+            return -1;
+        }
+
+        //@TODO delete contents of file from disk
+
+        MainDir.erase(FileName);
 
     }
 
     // ------------------------------------------------------------------------
-    int ReadFromFile(int fd, char *buf, int len) {
+    int ReadFromFile(int fd, char *buf, int len) {//fund8
 
 
     }
