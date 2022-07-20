@@ -175,6 +175,10 @@ public:
 
     // ------------------------------------------------------------------------
     void listAll() {//fun1
+        if(!is_formated){
+            cout <<"Disk is not formatted yet!"<<endl;
+            return;
+        }
         int i = 0;
         for (auto curFile = MainDir.begin(); curFile != MainDir.end(); curFile++) {
             cout << i << ": " << curFile->first << endl;
@@ -183,13 +187,15 @@ public:
             i++;
         }
         char bufy;
-        cout << "Disk content: '";
+        cout << "Disk content: '"<<endl;
         for (i = 0; i < DISK_SIZE; i++) {
             cout << "(";
             int ret_val = fseek(sim_disk_fd, i, SEEK_SET);
             ret_val = fread(&bufy, 1, 1, sim_disk_fd);
             cout << bufy;
             cout << ")";
+            if((i+1)%((DISK_SIZE/BitVectorSize)*3)==0)
+                cout <<endl;
         }
         cout << "'" << endl;
     }
@@ -263,17 +269,23 @@ public:
             return -1;
         }
         if(OpenFileDescriptors[fd]->getFile()->getFileSize()==0){
-            FsFile *file = OpenFileDescriptors[fd]->getFile();
+                    FsFile *file = OpenFileDescriptors[fd]->getFile();
             int i=0;
             while(BitVector[i]==1) //Find Empty Position in BitVector
                 i++;
+            BitVector[i]=1; //This block will be reserved for indexes of other blocks used for file
+            int blockSize = file->getBlockSize();
             /*Start of file is BitVector Index * BlockSize */
-            file->setIndexBlock(i*file->getBlockSize());
-
-
+            int start = i*blockSize;
+            file->setIndexBlock(start);
+            fseek(sim_disk_fd,start,SEEK_SET);
+            while(BitVector[i]==1)
+                i++;
+            start=i*blockSize;
+            fprintf(sim_disk_fd,"%s", to_string(i).c_str());
+            fseek(sim_disk_fd,start,SEEK_SET);
+            fprintf(sim_disk_fd,"%s",buf);
         }
-
-
 
     }
 
