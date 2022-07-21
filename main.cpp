@@ -255,11 +255,16 @@ public:
         }
         FsFile *file = OpenFileDescriptors[fd]->getFile();
         int blockSize = file->getBlockSize();
+        int SpaceLeft = (blockSize*blockSize) - file->getFileSize();
+        if(len>SpaceLeft){
+            len=SpaceLeft;
+            buf[len]='\0';
+        }
         if(file->getFileSize()==(blockSize*blockSize)){
             cout << "File is full!"<<endl;
             return -1;
         }
-        else if(file->getFileSize()==0){
+        else if(file->getFileSize()==0){ // If file is empty
             int BlocksNeeded = ceil((double)len/blockSize)+1;
             if(BlocksNeeded>EmptyBlocks){
                 cout << "Not enough space in disk!"<<endl;
@@ -300,48 +305,91 @@ public:
             delete[] toWrite;
             file->setFileSize(len);
         }
-        else{
-            int SpaceLeft = (blockSize*blockSize) - file->getFileSize();
-            if(len>SpaceLeft){
-                len=SpaceLeft;
-                buf[len]='\0';
+        else{ //If file already has data written in it
+            char *positions = new char[blockSize];
+            int IndexesBlockPos = file->getIndexBlock() * blockSize;
+            fseek(sim_disk_fd,IndexesBlockPos,SEEK_SET);
+            //read from sim_disk_fd to positions 4 chars
+            fread((void*)positions, 1, blockSize, sim_disk_fd);
+            int PosToContinue = (positions[strlen(positions)-1] - '0') *blockSize; //Set to beginning of block of last written block
+            if(file->getFileSize()%blockSize==0){ //If block is full, move to next block
+                int pos = (PosToContinue/blockSize)+1;
+                while(BitVector[pos]==1){
+                    pos++;
+                }
+                PosToContinue= pos*blockSize;
             }
-            char *positions = new char[file->getBlockSize()];
-            int IndexesBlockPos = file->getIndexBlock() * file->getBlockSize();
+            int offset; //Offset in block
+            offset = file->getFileSize()%blockSize;
+            fseek(sim_disk_fd,PosToContinue+offset,SEEK_SET);
             int BlocksNeeded = ceil((double)len/blockSize);
             if(file->getFileSize()%blockSize!=0)
                 BlocksNeeded--;
-            fseek(sim_disk_fd,IndexesBlockPos,SEEK_SET);
-            //read from sim_disk_fd to positions 4 chars
-            fread((void*)positions, 1, file->getBlockSize(), sim_disk_fd);
-            int PosToContinue = (positions[strlen(positions)-1] - '0') *blockSize; //Set to beginning of block
-            int offset = file->getFileSize()>file->getBlockSize() ? file->getFileSize()%file->getBlockSize() : file->getBlockSize()%file->getFileSize(); //Offset in block
-            fseek(sim_disk_fd,PosToContinue+offset,SEEK_SET);
-            char *toWrite = new char[blockSize]; //Fill file block by block using loop
-            int HowMuchToCut = blockSize-offset;
-            if(len<HowMuchToCut){
+            if(BlocksNeeded==0){
                 fwrite(buf,1,len,sim_disk_fd);
-                file->setFileSize(file->getFileSize()+len);
             }
             else{
-                strncpy(toWrite,buf,HowMuchToCut);
-                fwrite(toWrite,1,HowMuchToCut,sim_disk_fd);
-                len-=HowMuchToCut;
-                strcpy(buf,&buf[HowMuchToCut]);
-                int start = PosToContinue+1;
-                string String_Positions = positions;
-                while(BlocksNeeded!=0){
-                    if(BitVector[start]==0){
-                        BitVector[start]=1;
-                        String_Positions.append(to_string(start));
-                        BlocksNeeded--;
+                char *toWrite = new char[blockSize]; //Fill file block by block using loop
+                if(offset==0){
+                    int start = (PosToContinue/blockSize);
+                    string NewPositions;
+                    int hold = BlocksNeeded;
+                    while(BlocksNeeded!=0){
+                        if(BitVector[start]==0){
+                            BitVector[start]=1;
+                            NewPositions.append(to_string(start));
+                            BlocksNeeded--;
+                        }
+                        start++;
                     }
-                    start++;
+                    BlocksNeeded=hold;
+                    int i=0;
+                    while(i<BlocksNeeded){
+                        start = ((int)(NewPositions[i]) - '0') * blockSize;
+                        fseek(sim_disk_fd,start,SEEK_SET);
+                        strncpy(toWrite,&buf[i*blockSize],blockSize);
+                        fwrite(toWrite,1,blockSize,sim_disk_fd);
+                        i++;
+                    }
+                    fseek(sim_disk_fd,IndexesBlockPos,SEEK_SET);
+                    strcat(positions,NewPositions.c_str());
+                    fwrite(positions,1,blockSize,sim_disk_fd);
                 }
-
+                else{
+                    int HowMuchToCut = blockSize-offset;
+                    strncpy(toWrite,buf,HowMuchToCut);
+                    strcpy(buf,&buf[HowMuchToCut]);
+                    fwrite(toWrite,1,HowMuchToCut,sim_disk_fd);
+                    int start = PosToContinue/blockSize;
+                    string NewPositions;
+                    int hold = BlocksNeeded;
+                    while(BlocksNeeded!=0){
+                        if(BitVector[start]==0){
+                            BitVector[start]=1;
+                            NewPositions.append(to_string(start));
+                            BlocksNeeded--;
+                        }
+                        start++;
+                    }
+                    BlocksNeeded=hold;
+                    int i=0;
+                    while(i<BlocksNeeded){
+                        start = ((int)(NewPositions[i]) - '0') * blockSize;
+                        fseek(sim_disk_fd,start,SEEK_SET);
+                        strncpy(toWrite,&buf[i*blockSize],blockSize);
+                        fwrite(toWrite,1,blockSize,sim_disk_fd);
+                        i++;
+                    }
+                    fseek(sim_disk_fd,IndexesBlockPos,SEEK_SET);
+                    strcat(positions,NewPositions.c_str());
+                    fwrite(positions,1,blockSize,sim_disk_fd);
+                }
+                delete [] toWrite;
             }
+            file->setFileSize(file->getFileSize()+len);
+            delete [] positions;
         }
-
+        return len;
     }
 
     // ------------------------------------------------------------------------
