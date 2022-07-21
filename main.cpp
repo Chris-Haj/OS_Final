@@ -138,17 +138,14 @@ class fsDisk {
     int FindEmptyIndex(map<int, FileDescriptor *> ma) {
         if (ma.size() == 0)
             return 0;
-        int cur = ma.begin()->first;
-        int back = -1;
-        for (auto it = ++ma.begin(); it != ma.end(); it++) {
-            if (cur - back == 1) {
-                back = cur;
-                cur = it->first;
-            } else {
-                return back + 1;
-            }
+        int first = 0;
+        for (auto it = ma.begin(); it != ma.end(); it++) {
+            if(it->first==first)
+                first++;
+            else
+                return first;
         }
-        return cur + 1;
+        return first;
     }
 
 
@@ -206,8 +203,10 @@ public:
      * returns the file_descriptor
      * */
     int CreateFile(string fileName) { //fun3
-        if (!is_formated)
+        if (!is_formated){
+            cout << "Disk needs to be formatted!" <<endl;
             return -1;
+        }
         int BlockSize = DISK_SIZE / BitVectorSize;
         FsFile *file = new FsFile{BlockSize};
         FileDescriptor *fd = new FileDescriptor{fileName, file};
