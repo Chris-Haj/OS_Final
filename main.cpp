@@ -78,11 +78,6 @@ public:
     int getBlockSize() const {
         return block_size;
     }
-
-    void setBlockSize(int blockSize) {
-        block_size = blockSize;
-    }
-
 };
 
 // ============================================================================
@@ -131,13 +126,13 @@ class fsDisk {
     int *BitVector;
     int EmptyBlocks;
 
-    // MainDir - "file" (FsFile) vector, store all the files in the disk.
+    // MainDir - "file" (FsFile) map, store all the files in the disk.
     // map that links the file name to its FsFile
     map<string, FileDescriptor *> MainDir;
     map<int, FileDescriptor *> OpenFileDescriptors;
 
-    // (6) OpenFileDescriptors --
-    //  when you open a file,
+    // OpenFileDescriptors --
+    // when you open a file,
     // the operating system creates an entry to represent that file
     // This entry number is the file descriptor.
     int FindEmptyIndex(map<int, FileDescriptor *> ma) {
@@ -193,23 +188,18 @@ public:
             ret_val = fread(&bufy, 1, 1, sim_disk_fd);
             cout << bufy;
             cout << ")";
-         /*   if((i+1)%((DISK_SIZE/BitVectorSize)*3)==0)
-                cout <<endl;*/
         }
         cout << "'" << endl;
     }
 
-
-    // ------------------------------------------------------------------------
     void fsFormat(int blockSize = 4) {//fun2
         BitVectorSize = DISK_SIZE / blockSize;
         EmptyBlocks=BitVectorSize;
         cout << "FORMAT DISK: number of blocks: " << BitVectorSize << endl;
         BitVector = new int[BitVectorSize];
-        for (int i = 0; i < BitVectorSize; i++) {
-            BitVector[i] = 0;
-        }
         is_formated = true;
+        for (int i = 0; i < BitVectorSize; i++)
+            BitVector[i] = 0;
     }
 
     /*Function to create a new file (fsFile) and update OpenFileDescriptors and MainDir and also keeps file Open
@@ -248,17 +238,12 @@ public:
             cout << "FileDescriptor does not exist!" << endl;
             return "-1";
         }
+        OpenFileDescriptors[fd]->setInUse(false);
         string FileName = OpenFileDescriptors[fd]->getFileName();
         OpenFileDescriptors.erase(fd);
         return FileName;
     }
 
-    /*
-     * 1) File must be open
-     2) Disk must have space
-     3) File must have space
-     4) Disk must be initialized
-     */
     int WriteToFile(int fd, char *buf, int len) {//fun6
         if (!is_formated) { //If disk is not formatted
             cout << "Disk is not formatted!" << endl;
@@ -270,8 +255,8 @@ public:
         }
         FsFile *file = OpenFileDescriptors[fd]->getFile();
         int blockSize = file->getBlockSize();
-        if(file->getFileSize()==(blockSize*blockSize)||len>(blockSize*blockSize)){
-            cout << "File does not fit!"<<endl;
+        if(file->getFileSize()==(blockSize*blockSize)){
+            cout << "File is full!"<<endl;
             return -1;
         }
         else if(file->getFileSize()==0){
@@ -309,13 +294,52 @@ public:
                 start = ((int)(positions[i]) - '0') * blockSize;
                 fseek(sim_disk_fd,start,SEEK_SET);
                 strncpy(toWrite,&buf[i*blockSize],blockSize);
-                fwrite(toWrite,blockSize,1,sim_disk_fd);
+                fwrite(toWrite,1,blockSize,sim_disk_fd);
                 i++;
             }
             delete[] toWrite;
+            file->setFileSize(len);
         }
         else{
+            int SpaceLeft = (blockSize*blockSize) - file->getFileSize();
+            if(len>SpaceLeft){
+                len=SpaceLeft;
+                buf[len]='\0';
+            }
+            char *positions = new char[file->getBlockSize()];
+            int IndexesBlockPos = file->getIndexBlock() * file->getBlockSize();
+            int BlocksNeeded = ceil((double)len/blockSize);
+            if(file->getFileSize()%blockSize!=0)
+                BlocksNeeded--;
+            fseek(sim_disk_fd,IndexesBlockPos,SEEK_SET);
+            //read from sim_disk_fd to positions 4 chars
+            fread((void*)positions, 1, file->getBlockSize(), sim_disk_fd);
+            int PosToContinue = (positions[strlen(positions)-1] - '0') *blockSize; //Set to beginning of block
+            int offset = file->getFileSize()>file->getBlockSize() ? file->getFileSize()%file->getBlockSize() : file->getBlockSize()%file->getFileSize(); //Offset in block
+            fseek(sim_disk_fd,PosToContinue+offset,SEEK_SET);
+            char *toWrite = new char[blockSize]; //Fill file block by block using loop
+            int HowMuchToCut = blockSize-offset;
+            if(len<HowMuchToCut){
+                fwrite(buf,1,len,sim_disk_fd);
+                file->setFileSize(file->getFileSize()+len);
+            }
+            else{
+                strncpy(toWrite,buf,HowMuchToCut);
+                fwrite(toWrite,1,HowMuchToCut,sim_disk_fd);
+                len-=HowMuchToCut;
+                strcpy(buf,&buf[HowMuchToCut]);
+                int start = PosToContinue+1;
+                string String_Positions = positions;
+                while(BlocksNeeded!=0){
+                    if(BitVector[start]==0){
+                        BitVector[start]=1;
+                        String_Positions.append(to_string(start));
+                        BlocksNeeded--;
+                    }
+                    start++;
+                }
 
+            }
         }
 
     }
@@ -331,21 +355,61 @@ public:
             cout << "Cannot delete a file that is open!" << endl;
             return -1;
         }
-        string positions="";
+        char *ToRead = new char[file->getBlockSize()];
         int IndexesBlockPos = file->getIndexBlock() * file->getBlockSize() ;
         fseek(sim_disk_fd,IndexesBlockPos,SEEK_SET);
-        fread()
+        fread((void*)ToRead, file->getBlockSize(), 1, sim_disk_fd);
+        fseek(sim_disk_fd,IndexesBlockPos,SEEK_SET);
+        for(int i=0;i<file->getBlockSize();i++){
+            fwrite("\0",1,1,sim_disk_fd);
+        }
+        BitVector[file->getIndexBlock()]=0;
 
-        //@TODO delete contents of file from disk
+        for(int i=0;i<strlen(ToRead);i++){
+            int index = (int)(ToRead[i]) - '0';
+            fseek(sim_disk_fd,index*file->getBlockSize(),SEEK_SET);
+            for(int j=0;j<file->getBlockSize();j++){
+                fwrite("\0",1,1,sim_disk_fd);
+            }
+            BitVector[index]=0;
+        }
 
+        delete MainDir[FileName]->getFile();
+        delete MainDir[FileName];
         MainDir.erase(FileName);
-
+        delete [] ToRead;
     }
 
     // ------------------------------------------------------------------------
     int ReadFromFile(int fd, char *buf, int len) {//fund8
-
-
+        if (!is_formated) { //If disk is not formatted
+            cout << "Disk is not formatted!" << endl;
+            return -1;
+        }
+        strcpy(buf,""); //Clear buffer
+        if (OpenFileDescriptors.find(fd) == OpenFileDescriptors.end()) { // If File is not open
+            cout << "File is not open!" << endl;
+            return -1;
+        }
+        FsFile *file = OpenFileDescriptors[fd]->getFile();
+        char *ToRead = new char[file->getBlockSize()];
+        int IndexesBlockPos = file->getIndexBlock() * file->getBlockSize();
+        fseek(sim_disk_fd,IndexesBlockPos,SEEK_SET);
+        //read from sim_disk_fd to positions 4 chars
+        fread((void*)ToRead, 1, file->getBlockSize(), sim_disk_fd);
+        int BlocksToRead = ceil((double) len/file->getBlockSize());
+        int i=0;
+        char *ReadFromblock = new char[file->getBlockSize()];
+        for(;i<BlocksToRead;i++){
+            int index = (int)(ToRead[i]) - '0';
+            fseek(sim_disk_fd,index*file->getBlockSize(),SEEK_SET);
+            fread((void*)ReadFromblock, file->getBlockSize(), 1, sim_disk_fd);
+            strncpy(&buf[i*file->getBlockSize()],ReadFromblock,file->getBlockSize());
+            strcpy(ReadFromblock,"");
+        }
+        buf[len]='\0';
+        delete[] ReadFromblock;
+        delete[] ToRead;
     }
 
 };
