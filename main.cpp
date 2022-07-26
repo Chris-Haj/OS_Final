@@ -445,11 +445,13 @@ public:
             }
             BitVector[index]=0;
         }
-
+        int fd = MainDir[FileName]->getFd();
+        OpenFileDescriptors.erase(fd);
         delete MainDir[FileName]->getFile();
         delete MainDir[FileName];
         MainDir.erase(FileName);
         delete [] ToRead;
+        return fd;
     }
 
     // ------------------------------------------------------------------------
@@ -483,7 +485,6 @@ public:
         delete[] ReadFromblock;
         delete[] ToRead;
     }
-
 };
 
 int main() {
