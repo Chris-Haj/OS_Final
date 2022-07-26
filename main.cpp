@@ -86,6 +86,7 @@ class FileDescriptor {
     string file_name;
     FsFile *fs_file;
     bool inUse;
+    int fd;
 
 public:
 
@@ -93,6 +94,7 @@ public:
         file_name = FileName;
         fs_file = fsi;
         inUse = true;
+        fd=-1;
     }
 
     string getFileName() {
@@ -109,6 +111,14 @@ public:
     FsFile *getFile(){
         return fs_file;
     }
+    int getFd(){
+        return fd;
+    }
+
+    void setFd(int FileD){
+        this->fd=FileD;
+    }
+
 };
 
 #define DISK_SIM_FILE "DISK_SIM_FILE.txt"
@@ -207,10 +217,15 @@ public:
             cout << "Disk needs to be formatted!" <<endl;
             return -1;
         }
+        if(MainDir.find(fileName)!=MainDir.end()){
+            cout << "File already exists!"<<endl;
+            return -1;
+        }
         int BlockSize = DISK_SIZE / BitVectorSize;
         FsFile *file = new FsFile{BlockSize};
         FileDescriptor *fd = new FileDescriptor{fileName, file};
         int FileDescIndex = FindEmptyIndex(OpenFileDescriptors);
+        fd->setFd(FileDescIndex);
         OpenFileDescriptors.insert({FileDescIndex, fd});
         MainDir.insert({move(fileName), fd});
         return FileDescIndex;
@@ -225,21 +240,31 @@ public:
             cout << "File is already open!" << endl;
             return -1;
         }
+        FileDescriptor *fileDescriptor = MainDir[fileName];
+        if(fileDescriptor->getFd()!=-1){
+            OpenFileDescriptors[fileDescriptor->getFd()]=fileDescriptor;
+            return fileDescriptor->getFd();
+        }
         int FileDescIndex = FindEmptyIndex(OpenFileDescriptors);
-        OpenFileDescriptors.insert({FileDescIndex, MainDir[fileName]});
-        MainDir[fileName]->setInUse(true);
+        OpenFileDescriptors.insert({FileDescIndex, fileDescriptor});
+        fileDescriptor->setInUse(true);
+        fileDescriptor->setFd(FileDescIndex);
         return FileDescIndex;
     }
 
-    // ------------------------------------------------------------------------
-    string CloseFile(int fd) { //fun5
+
+    string CloseFile(int fd) {
         if (OpenFileDescriptors.find(fd) == OpenFileDescriptors.end()) {
             cout << "FileDescriptor does not exist!" << endl;
             return "-1";
         }
-        OpenFileDescriptors[fd]->setInUse(false);
+        if(OpenFileDescriptors[fd] == nullptr){
+            cout << "File is not open!"<<endl;
+            return "-1";
+        }
         string FileName = OpenFileDescriptors[fd]->getFileName();
-        OpenFileDescriptors.erase(fd);
+        OpenFileDescriptors[fd]->setInUse(false);
+        OpenFileDescriptors[fd]= nullptr;
         return FileName;
     }
 
