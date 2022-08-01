@@ -198,7 +198,7 @@ public:
     /*Function to create a new file (fsFile) and update OpenFileDescriptors and MainDir and also keeps file Open
      * returns the file_descriptor
      * */
-    int CreateFile(string fileName) { //fun3
+    int CreateFile(string fileName) {
         if (!is_formated) {
             cout << "Disk needs to be formatted!" << endl;
             return -1;
@@ -230,7 +230,6 @@ public:
         MainDir[fileName]->setInUse(true);
         return FileDescIndex;
     }
-
 
     string CloseFile(int fd) { //After receiving the fd of a file, it removes it from the OpenFileDescriptors, and its setInUse is set to false, indicating that is closed and not being used.
         if (OpenFileDescriptors.find(fd) == OpenFileDescriptors.end()) {
@@ -270,6 +269,8 @@ public:
             buf[i]='\0';
         int BlocksNeeded = ceil((double) len / blockSize);
         char *positions = new char[blockSize]; // Array to store positions of the file's blocks
+        for (int i=0;i< blockSize;i++)
+            positions[i]='\0';
         int LettersWritten = 0; //Used to point where to continue writing from buffer
         if (FileSize == 0) {
             if (BlocksNeeded>EmptyBlocks){
@@ -294,14 +295,15 @@ public:
                 }
             }
             fseek(sim_disk_fd,IndexBlock*blockSize,SEEK_SET);
-            fwrite(positions,1,blockSize,sim_disk_fd);
+            fwrite(positions,1,blockSize,sim_disk_fd);//Write into index block the positions of the blocks to write on
         }
         else{
-            char *oldPositions = new char[blockSize];
+            char *oldPositions = new char[blockSize+1];
+            oldPositions[blockSize]='\0';
             fseek(sim_disk_fd,IndexBlock*blockSize,SEEK_SET);
-            fread(oldPositions,1,blockSize,sim_disk_fd);
+            fread(oldPositions,1,blockSize,sim_disk_fd);//Read previous positions of blocks to write on to update them later
             int offset = FileSize%blockSize;
-            if(offset==0){
+            if(offset==0){ //if offset is 0, then we need to get a new block to write on
                 for(int i=0,j=0;i<BitVectorSize&&j<BlocksNeeded;i++) { //Get positions of blocks to write on and take them, while adding them to "positions"
                     if (BitVector[i] == 0) {
                         BitVector[i] = 1;
@@ -315,7 +317,7 @@ public:
                 fseek(sim_disk_fd,IndexBlock*blockSize,SEEK_SET);
                 fwrite(oldPositions,1,blockSize,sim_disk_fd);
             }
-            else{
+            else{//if offset is not 0, continue writing on the same block then get a new block to write on if needed
                 int lastBlock = (int) oldPositions[strlen(oldPositions)-1];
                 fseek(sim_disk_fd,(lastBlock*blockSize)+offset,SEEK_SET);
                 fwrite(buf,1,blockSize-offset,sim_disk_fd);
@@ -330,9 +332,13 @@ public:
                         LettersWritten += blockSize;
                     }
                 }
+                strcat(oldPositions,positions);//Update positions of blocks to write on
+                fseek(sim_disk_fd,IndexBlock*blockSize,SEEK_SET);
+                fwrite(oldPositions,1,blockSize,sim_disk_fd);
             }
             delete[] oldPositions;
         }
+        delete[] positions;
         file->setBlockInUse(strlen(positions));
         file->setFileSize(FileSize+len);
         return return_value;
@@ -408,7 +414,6 @@ public:
         delete[] ToRead;
         return len>file->getFileSize() ? -1:len; //In-case we tried reading more than the file size, we return -1 to indicate that an error happened, and the requested length was not read.
     }
-
 };
 
 int main() {
