@@ -94,7 +94,7 @@ public:
         file_name = FileName;
         fs_file = fsi;
         inUse = true;
-        fd=-1;
+        fd = -1;
     }
 
     string getFileName() {
@@ -108,15 +108,17 @@ public:
     void setInUse(bool use) {
         inUse = use;
     }
-    FsFile *getFile(){
+
+    FsFile *getFile() {
         return fs_file;
     }
-    int getFd(){
+
+    int getFd() {
         return fd;
     }
 
-    void setFd(int FileD){
-        this->fd=FileD;
+    void setFd(int FileD) {
+        this->fd = FileD;
     }
 
 };
@@ -150,7 +152,7 @@ class fsDisk {
             return 0;
         int first = 0;
         for (auto it = ma.begin(); it != ma.end(); it++) {
-            if(it->first==first)
+            if (it->first == first)
                 first++;
             else
                 return first;
@@ -171,8 +173,9 @@ public:
         fflush(sim_disk_fd);
         is_formated = false;
     }
-    ~fsDisk(){
-        for(auto i = MainDir.begin(); i!=MainDir.end();i++){
+
+    ~fsDisk() {
+        for (auto i = MainDir.begin(); i != MainDir.end(); i++) {
             delete i->second->getFile();
             delete i->second;
         }
@@ -183,32 +186,35 @@ public:
 
     // ------------------------------------------------------------------------
     void listAll() {//fun1
-        if(!is_formated){
-            cout <<"Disk is not formatted yet!"<<endl;
+        if (!is_formated) {
+            cout << "Disk is not formatted yet!" << endl;
             return;
         }
         int i = 0;
         for (auto curFile = MainDir.begin(); curFile != MainDir.end(); curFile++) {
             cout << i << ": " << curFile->first << endl;
             cout << "index: " << i << ": FileName: " << curFile->first
-                 << " , isInUse: " << curFile->second->getInUse() << endl;
+                 << " , isInUse: " << curFile->second->getInUse() <<" File size: " <<curFile->second->getFile()->getFileSize() << endl;
             i++;
         }
         char bufy;
-        cout << "Disk content: '"<<endl;
+        cout << "Disk content: '" << endl;
         for (i = 0; i < DISK_SIZE; i++) {
             cout << "(";
             int ret_val = fseek(sim_disk_fd, i, SEEK_SET);
             ret_val = fread(&bufy, 1, 1, sim_disk_fd);
-            cout << bufy;
+            if (bufy<32)
+                cout <<'\0';
+            else
+                cout << bufy;
             cout << ")";
         }
         cout << "'" << endl;
     }
 
     void fsFormat(int blockSize = 4) {
-        if(is_formated){//If Disk was formatted, and we need to format again, we need to clear out, all data structures that were used earlier
-            for(auto i = MainDir.begin(); i!=MainDir.end();i++){
+        if (is_formated) {//If Disk was formatted, and we need to format again, we need to clear out, all data structures that were used earlier
+            for (auto i = MainDir.begin(); i != MainDir.end(); i++) {
                 delete i->second->getFile();
                 delete i->second;
             }
@@ -222,7 +228,7 @@ public:
             }
         }
         BitVectorSize = DISK_SIZE / blockSize;
-        EmptyBlocks=BitVectorSize;
+        EmptyBlocks = BitVectorSize;
         cout << "FORMAT DISK: number of blocks: " << BitVectorSize << endl;
         BitVector = new int[BitVectorSize];
         is_formated = true;
@@ -234,19 +240,18 @@ public:
      * returns the file_descriptor
      * */
     int CreateFile(string fileName) { //fun3
-        if (!is_formated){
-            cout << "Disk needs to be formatted!" <<endl;
+        if (!is_formated) {
+            cout << "Disk needs to be formatted!" << endl;
             return -1;
         }
-        if(MainDir.find(fileName)!=MainDir.end()){
-            cout << "File already exists!"<<endl;
+        if (MainDir.find(fileName) != MainDir.end()) {
+            cout << "File already exists!" << endl;
             return -1;
         }
         int BlockSize = DISK_SIZE / BitVectorSize;
         FsFile *file = new FsFile{BlockSize};
         FileDescriptor *fd = new FileDescriptor{fileName, file};
         int FileDescIndex = FindEmptyIndex(OpenFileDescriptors);
-        fd->setFd(FileDescIndex);
         OpenFileDescriptors.insert({FileDescIndex, fd});
         MainDir.insert({move(fileName), fd});
         return FileDescIndex;
@@ -261,15 +266,9 @@ public:
             cout << "File is already open!" << endl;
             return -1;
         }
-        FileDescriptor *fileDescriptor = MainDir[fileName];
-        if(fileDescriptor->getFd()!=-1){
-            OpenFileDescriptors[fileDescriptor->getFd()]=fileDescriptor;
-            return fileDescriptor->getFd();
-        }
         int FileDescIndex = FindEmptyIndex(OpenFileDescriptors);
-        OpenFileDescriptors.insert({FileDescIndex, fileDescriptor});
-        fileDescriptor->setInUse(true);
-        fileDescriptor->setFd(FileDescIndex);
+        OpenFileDescriptors.insert({FileDescIndex, MainDir[fileName]});
+        MainDir[fileName]->setInUse(true);
         return FileDescIndex;
     }
 
@@ -279,13 +278,9 @@ public:
             cout << "FileDescriptor does not exist!" << endl;
             return "-1";
         }
-        if(OpenFileDescriptors[fd] == nullptr){
-            cout << "File is not open!"<<endl;
-            return "-1";
-        }
-        string FileName = OpenFileDescriptors[fd]->getFileName();
         OpenFileDescriptors[fd]->setInUse(false);
-        OpenFileDescriptors[fd]= nullptr;
+        string FileName = OpenFileDescriptors[fd]->getFileName();
+        OpenFileDescriptors.erase(fd);
         return FileName;
     }
 
@@ -302,34 +297,86 @@ public:
         int blockSize = file->getBlockSize();
         int FileSize = file->getFileSize();
         int IndexBlock = file->getIndexBlock();
-        if(FileSize==(blockSize*blockSize)){
-            cout << "File is full!"<<endl;
+        if (FileSize == (blockSize * blockSize)) {
+            cout << "File is full!" << endl;
             return -1;
         }
-        int SpaceLeft = (blockSize*blockSize) - file->getFileSize(), return_value=len;
-        if(len>SpaceLeft){
-            len=SpaceLeft;
-            buf[len]='\0';
-            return_value=-1;
+        int SpaceLeft = (blockSize * blockSize) - file->getFileSize(), return_value = len;
+        if (len > SpaceLeft) { //If the length of the buffer is larger than the space left in the file then it, we will only write according to how much space is left
+            len = SpaceLeft;
+            buf[len] = '\0';
+            return_value = -1; //return_val is set to -1 to indicate that an error occurred.
         }
-        int BlocksNeeded = ceil((double)len/blockSize);
-        if(FileSize==0){
-            for(int i=0;i<BitVectorSize;i++){
-                if(BitVector[i]==0){
-                    IndexBlock=i;
-                    BitVector[i]=1;
+        for(int i=len;i<blockSize*blockSize;i++)
+            buf[i]='\0';
+        int BlocksNeeded = ceil((double) len / blockSize);
+        char *positions = new char[blockSize]; // Array to store positions of the file's blocks
+        int LettersWritten = 0; //Used to point where to continue writing from buffer
+        if (FileSize == 0) {
+            if (BlocksNeeded>EmptyBlocks){
+                cout << "Not enough space"<<endl;
+                return -1;
+            }
+            for (int i = 0; i < BitVectorSize; i++) { // Find location for index block and take it.
+                if (BitVector[i] == 0) {
+                    IndexBlock = i;
+                    file->setIndexBlock(IndexBlock);
+                    BitVector[i] = 1;
                     break;
                 }
             }
+            for(int i=0,j=0;i<BitVectorSize&&j<BlocksNeeded;i++){ //Get positions of blocks to write on and take them, while adding them to "positions"
+                if(BitVector[i]==0){
+                    BitVector[i]=1;
+                    positions[j++] = (unsigned char) i;
+                    fseek(sim_disk_fd,i*blockSize,SEEK_SET);
+                    fwrite(&buf[LettersWritten],1,blockSize,sim_disk_fd);
+                    LettersWritten+=blockSize;
+                }
+            }
+            fseek(sim_disk_fd,IndexBlock*blockSize,SEEK_SET);
+            fwrite(positions,1,blockSize,sim_disk_fd);
         }
-        char *positions = new char[blockSize];
-        fseek(sim_disk_fd,IndexBlock*blockSize,SEEK_SET);
-        fread(positions,1,blockSize,sim_disk_fd);
-
-
-
-
-
+        else{
+            char *oldPositions = new char[blockSize];
+            fseek(sim_disk_fd,IndexBlock*blockSize,SEEK_SET);
+            fread(oldPositions,1,blockSize,sim_disk_fd);
+            int offset = FileSize%blockSize;
+            if(offset==0){
+                for(int i=0,j=0;i<BitVectorSize&&j<BlocksNeeded;i++) { //Get positions of blocks to write on and take them, while adding them to "positions"
+                    if (BitVector[i] == 0) {
+                        BitVector[i] = 1;
+                        positions[j++] = (unsigned char) i;
+                        fseek(sim_disk_fd, i * blockSize, SEEK_SET);
+                        fwrite(&buf[LettersWritten], 1, blockSize, sim_disk_fd);
+                        LettersWritten += blockSize;
+                    }
+                }
+                strcat(oldPositions,positions);
+                fseek(sim_disk_fd,IndexBlock*blockSize,SEEK_SET);
+                fwrite(oldPositions,1,blockSize,sim_disk_fd);
+            }
+            else{
+                int lastBlock = (int) oldPositions[strlen(oldPositions)-1];
+                fseek(sim_disk_fd,(lastBlock*blockSize)+offset,SEEK_SET);
+                fwrite(buf,1,blockSize-offset,sim_disk_fd);
+                LettersWritten+=blockSize-offset;
+                BlocksNeeded = ceil((double)(len-LettersWritten)/blockSize);
+                for(int i=0,j=0;i<BitVectorSize&&j<BlocksNeeded;i++) { //Get positions of blocks to write on and take them, while adding them to "positions"
+                    if (BitVector[i] == 0) {
+                        BitVector[i] = 1;
+                        positions[j++] = (unsigned char) i;
+                        fseek(sim_disk_fd, i * blockSize, SEEK_SET);
+                        fwrite(&buf[LettersWritten], 1, blockSize, sim_disk_fd);
+                        LettersWritten += blockSize;
+                    }
+                }
+            }
+            delete[] oldPositions;
+        }
+        file->setBlockInUse(strlen(positions));
+        file->setFileSize(FileSize+len);
+        return return_value;
     }
 
     // ------------------------------------------------------------------------
@@ -343,31 +390,30 @@ public:
             cout << "Cannot delete a file that is open!" << endl;
             return -1;
         }
-        char *ToRead = new char[file->getBlockSize()];
-        int IndexesBlockPos = file->getIndexBlock() * file->getBlockSize() ;
-        fseek(sim_disk_fd,IndexesBlockPos,SEEK_SET);
-        fread((void*)ToRead, file->getBlockSize(), 1, sim_disk_fd);
-        fseek(sim_disk_fd,IndexesBlockPos,SEEK_SET);
-        for(int i=0;i<file->getBlockSize();i++){
-            fwrite("\0",1,1,sim_disk_fd);
-        }
-        BitVector[file->getIndexBlock()]=0;
+        int blockSize = file->getBlockSize();
+        int Index = file->getIndexBlock();
+        char *ToRead = new char[blockSize];
 
-        for(int i=0;i<strlen(ToRead);i++){
-            int index = (int)(ToRead[i]) - '0';
-            fseek(sim_disk_fd,index*file->getBlockSize(),SEEK_SET);
-            for(int j=0;j<file->getBlockSize();j++){
-                fwrite("\0",1,1,sim_disk_fd);
-            }
-            BitVector[index]=0;
+        fseek(sim_disk_fd, Index*blockSize, SEEK_SET);
+        fread((void *) ToRead, 1, blockSize, sim_disk_fd);
+        fseek(sim_disk_fd, Index*blockSize, SEEK_SET);
+        for (int i = 0; i < file->getBlockSize(); i++) {
+            fwrite("\0", 1, 1, sim_disk_fd);
         }
-        int fd = MainDir[FileName]->getFd();
-        OpenFileDescriptors.erase(fd);
+        BitVector[Index] = 0;
+        for (int i = 0; i < strlen(ToRead); i++) {
+            int index = (int) (ToRead[i]);
+            fseek(sim_disk_fd, index * blockSize, SEEK_SET);
+            for (int j = 0; j < blockSize; j++) {
+                fwrite("\0", 1, 1, sim_disk_fd);
+            }
+            BitVector[index] = 0;
+        }
         delete MainDir[FileName]->getFile();
         delete MainDir[FileName];
         MainDir.erase(FileName);
-        delete [] ToRead;
-        return fd;
+        delete[] ToRead;
+        return 1;
     }
 
     // ------------------------------------------------------------------------
@@ -376,29 +422,30 @@ public:
             cout << "Disk is not formatted!" << endl;
             return -1;
         }
-        strcpy(buf,""); //Clear buffer
+        strcpy(buf, ""); //Clear buffer
         if (OpenFileDescriptors.find(fd) == OpenFileDescriptors.end()) { // If File is not open
             cout << "File is not open!" << endl;
             return -1;
         }
         FsFile *file = OpenFileDescriptors[fd]->getFile();
-        char *ToRead = new char[file->getBlockSize()];
-        int IndexesBlockPos = file->getIndexBlock() * file->getBlockSize();
-        fseek(sim_disk_fd,IndexesBlockPos,SEEK_SET);
+        int blockSize = file->getBlockSize();
+        char *ToRead = new char[blockSize];
+        int Index = file->getIndexBlock();
+        fseek(sim_disk_fd, Index*blockSize, SEEK_SET);
         //read from sim_disk_fd to positions 4 chars
-        fread((void*)ToRead, 1, file->getBlockSize(), sim_disk_fd);
-        int BlocksToRead = ceil((double) len/file->getBlockSize());
-        int i=0;
-        char *ReadFromblock = new char[file->getBlockSize()];
-        for(;i<BlocksToRead;i++){
-            int index = (int)(ToRead[i]) - '0';
-            fseek(sim_disk_fd,index*file->getBlockSize(),SEEK_SET);
-            fread((void*)ReadFromblock, file->getBlockSize(), 1, sim_disk_fd);
-            strncpy(&buf[i*file->getBlockSize()],ReadFromblock,file->getBlockSize());
-            strcpy(ReadFromblock,"");
+        fread((void *) ToRead, 1, blockSize, sim_disk_fd);
+        int BlocksToRead = strlen(ToRead);
+        int i = 0;
+        char *ReadFromBlock = new char[blockSize];
+        for (; i < BlocksToRead; i++) {
+            int index = (int) (ToRead[i]);
+            fseek(sim_disk_fd, index * blockSize, SEEK_SET);
+            fread((void *) ReadFromBlock, blockSize, 1, sim_disk_fd);
+            strncpy(&buf[i * blockSize], ReadFromBlock, blockSize);
+            strcpy(ReadFromBlock, "");
         }
-        buf[len]='\0';
-        delete[] ReadFromblock;
+        buf[len] = '\0';
+        delete[] ReadFromBlock;
         delete[] ToRead;
     }
 };
