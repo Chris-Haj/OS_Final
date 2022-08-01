@@ -10,33 +10,7 @@
 #include <fcntl.h>
 
 using namespace std;
-
 #define DISK_SIZE 256
-
-// ============================================================================
-void decToBinary(int n, char &c) {
-    // array to store binary number
-    int binaryNum[8];
-
-    // counter for binary array
-    int i = 0;
-    while (n > 0) {
-        // storing remainder in binary array
-        binaryNum[i] = n % 2;
-        n = n / 2;
-        i++;
-    }
-
-    // printing binary array in reverse order
-    for (int j = i - 1; j >= 0; j--) {
-        if (binaryNum[j] == 1)
-            c = c | 1u << j;
-    }
-}
-
-
-
-// ============================================================================
 
 class FsFile {
     int file_size;
@@ -57,10 +31,6 @@ public:
 
     void setFileSize(int fileSize) {
         file_size = fileSize;
-    }
-
-    int getBlockInUse() const {
-        return block_in_use;
     }
 
     void setBlockInUse(int blockInUse) {
@@ -86,15 +56,12 @@ class FileDescriptor {
     string file_name;
     FsFile *fs_file;
     bool inUse;
-    int fd;
-
 public:
 
     FileDescriptor(string FileName, FsFile *fsi) {
         file_name = FileName;
         fs_file = fsi;
         inUse = true;
-        fd = -1;
     }
 
     string getFileName() {
@@ -112,15 +79,6 @@ public:
     FsFile *getFile() {
         return fs_file;
     }
-
-    int getFd() {
-        return fd;
-    }
-
-    void setFd(int FileD) {
-        this->fd = FileD;
-    }
-
 };
 
 #define DISK_SIM_FILE "DISK_SIM_FILE.txt"
@@ -138,16 +96,17 @@ class fsDisk {
     int *BitVector;
     int EmptyBlocks;
 
+    map<string, FileDescriptor *> MainDir;
     // MainDir - "file" (FsFile) map, store all the files in the disk.
     // map that links the file name to its FsFile
-    map<string, FileDescriptor *> MainDir;
-    map<int, FileDescriptor *> OpenFileDescriptors;
 
+    map<int, FileDescriptor *> OpenFileDescriptors;
     // OpenFileDescriptors --
     // when you open a file,
     // the operating system creates an entry to represent that file
     // This entry number is the file descriptor.
-    int FindEmptyIndex(map<int, FileDescriptor *> ma) {
+
+    int FindEmptyIndex(map<int, FileDescriptor *> ma) { //This function searches for the lowest key possible that is available to be used as a fd
         if (ma.size() == 0)
             return 0;
         int first = 0;
@@ -221,7 +180,7 @@ public:
             MainDir.clear();
             OpenFileDescriptors.clear();
             delete[] BitVector;
-            for (int i = 0; i < DISK_SIZE; i++) {
+            for (int i = 0; i < DISK_SIZE; i++) { //Clear out the disk
                 int ret_val = fseek(sim_disk_fd, i, SEEK_SET);
                 ret_val = fwrite("\0", 1, 1, sim_disk_fd);
                 assert(ret_val == 1);
@@ -251,13 +210,13 @@ public:
         int BlockSize = DISK_SIZE / BitVectorSize;
         FsFile *file = new FsFile{BlockSize};
         FileDescriptor *fd = new FileDescriptor{fileName, file};
-        int FileDescIndex = FindEmptyIndex(OpenFileDescriptors);
-        OpenFileDescriptors.insert({FileDescIndex, fd});
+        int FileDescIndex = FindEmptyIndex(OpenFileDescriptors); //Search for lowest fd in OpenFileDescriptors and give it to file
+        OpenFileDescriptors.insert({FileDescIndex, fd}); //After creating the file, it is inserted into both MainDir, and OpenFileDescriptors (file is left open after creation)
         MainDir.insert({move(fileName), fd});
         return FileDescIndex;
     }
 
-    int OpenFile(string fileName) {//fun4
+    int OpenFile(string fileName) {
         if (MainDir.find(fileName) == MainDir.end()) {
             cout << "File does not exist!" << endl;
             return -1;
@@ -266,14 +225,14 @@ public:
             cout << "File is already open!" << endl;
             return -1;
         }
-        int FileDescIndex = FindEmptyIndex(OpenFileDescriptors);
+        int FileDescIndex = FindEmptyIndex(OpenFileDescriptors); //Find the lowest fd in OpenFileDescriptors and give it to file
         OpenFileDescriptors.insert({FileDescIndex, MainDir[fileName]});
         MainDir[fileName]->setInUse(true);
         return FileDescIndex;
     }
 
 
-    string CloseFile(int fd) {
+    string CloseFile(int fd) { //After receiving the fd of a file, it removes it from the OpenFileDescriptors, and its setInUse is set to false, indicating that is closed and not being used.
         if (OpenFileDescriptors.find(fd) == OpenFileDescriptors.end()) {
             cout << "FileDescriptor does not exist!" << endl;
             return "-1";
@@ -284,8 +243,8 @@ public:
         return FileName;
     }
 
-    int WriteToFile(int fd, char *buf, int len) {//fun6
-        if (!is_formated) { //If disk is not formatted
+    int WriteToFile(int fd, char *buf, int len) {
+        if (!is_formated) {
             cout << "Disk is not formatted!" << endl;
             return -1;
         }
@@ -393,15 +352,15 @@ public:
         int blockSize = file->getBlockSize();
         int Index = file->getIndexBlock();
         char *ToRead = new char[blockSize];
-
+        //ToRead will store the indexes that the file uses
         fseek(sim_disk_fd, Index*blockSize, SEEK_SET);
         fread((void *) ToRead, 1, blockSize, sim_disk_fd);
         fseek(sim_disk_fd, Index*blockSize, SEEK_SET);
-        for (int i = 0; i < file->getBlockSize(); i++) {
+        for (int i = 0; i < file->getBlockSize(); i++) { //Clear out the Indexes block
             fwrite("\0", 1, 1, sim_disk_fd);
         }
         BitVector[Index] = 0;
-        for (int i = 0; i < strlen(ToRead); i++) {
+        for (int i = 0; i < strlen(ToRead); i++) {//Go over each block used by the file, and clear it, while setting its index in BitVector to 0, indicating that it is free.
             int index = (int) (ToRead[i]);
             fseek(sim_disk_fd, index * blockSize, SEEK_SET);
             for (int j = 0; j < blockSize; j++) {
@@ -409,10 +368,11 @@ public:
             }
             BitVector[index] = 0;
         }
-        delete MainDir[FileName]->getFile();
+        delete MainDir[FileName]->getFile(); //After deleting all contents of the file from the disk, we delete the file pointer, then delete the fileDescriptor pointer
         delete MainDir[FileName];
-        MainDir.erase(FileName);
+        MainDir.erase(FileName);//Remove the file's name from Main Directory
         delete[] ToRead;
+        EmptyBlocks+=strlen(ToRead);
         return 1;
     }
 
@@ -432,12 +392,11 @@ public:
         char *ToRead = new char[blockSize];
         int Index = file->getIndexBlock();
         fseek(sim_disk_fd, Index*blockSize, SEEK_SET);
-        //read from sim_disk_fd to positions 4 chars
-        fread((void *) ToRead, 1, blockSize, sim_disk_fd);
+        fread((void *) ToRead, 1, blockSize, sim_disk_fd); // ToRead will store the indexes of each block of file
         int BlocksToRead = strlen(ToRead);
         int i = 0;
         char *ReadFromBlock = new char[blockSize];
-        for (; i < BlocksToRead; i++) {
+        for (; i < BlocksToRead; i++) { //Go over each index in ToRead which is an index of a block of the current file, go to that block, read it all and add the result to buf
             int index = (int) (ToRead[i]);
             fseek(sim_disk_fd, index * blockSize, SEEK_SET);
             fread((void *) ReadFromBlock, blockSize, 1, sim_disk_fd);
@@ -447,7 +406,9 @@ public:
         buf[len] = '\0';
         delete[] ReadFromBlock;
         delete[] ToRead;
+        return len>file->getFileSize() ? -1:len; //In-case we tried reading more than the file size, we return -1 to indicate that an error happened, and the requested length was not read.
     }
+
 };
 
 int main() {
