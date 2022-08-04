@@ -34,6 +34,10 @@ public:
         block_in_use = blockInUse;
     }
 
+    int getBlockInUse(){
+        return block_in_use;
+    }
+
     int getIndexBlock() const {
         return index_block;
     }
@@ -150,7 +154,8 @@ public:
         for (auto curFile = MainDir.begin(); curFile != MainDir.end(); curFile++) {
             cout << i << ": " << curFile->first << endl;
             cout << "index: " << i << ": FileName: " << curFile->first
-                 << " , isInUse: " << curFile->second->getInUse() <<" File size: " <<curFile->second->getFile()->getFileSize() << endl;
+                 << " , isInUse: " << curFile->second->getInUse() <<" File size: " <<curFile->second->getFile()->getFileSize() <<
+                 " Blocks in use: "<< curFile->second->getFile()->getBlockInUse()<<endl;
             i++;
         }
         char bufy;
@@ -296,9 +301,9 @@ public:
         }
         else{
             char *oldPositions = new char[blockSize+1];
-            oldPositions[blockSize]='\0';
             fseek(sim_disk_fd,IndexBlock*blockSize,SEEK_SET);
             fread(oldPositions,1,blockSize,sim_disk_fd);//Read previous positions of blocks to write on to update them later
+            oldPositions[blockSize]='\0';
             int offset = FileSize%blockSize;
             if(offset==0){ //if offset is 0, then we need to get a new block to write on
                 for(int i=0,j=0;i<BitVectorSize&&j<BlocksNeeded;i++) { //Get positions of blocks to write on and take them, while adding them to "positions"
@@ -336,8 +341,8 @@ public:
             delete[] oldPositions;
         }
         delete[] positions;
-        file->setBlockInUse(strlen(positions));
         file->setFileSize(FileSize+len);
+        file->setBlockInUse(ceil(double (file->getFileSize())/blockSize));
         return return_value;
     }
 
@@ -363,7 +368,7 @@ public:
             fwrite("\0", 1, 1, sim_disk_fd);
         }
         BitVector[Index] = 0;
-        for (int i = 0; i < strlen(ToRead); i++) {//Go over each block used by the file, and clear it, while setting its index in BitVector to 0, indicating that it is free.
+        for (int i = 0; i < file->getBlockInUse(); i++) {//Go over each block used by the file, and clear it, while setting its index in BitVector to 0, indicating that it is free.
             int index = (int) (ToRead[i]);
             fseek(sim_disk_fd, index * blockSize, SEEK_SET);
             for (int j = 0; j < blockSize; j++) {
@@ -391,6 +396,8 @@ public:
             return -1;
         }
         FsFile *file = OpenFileDescriptors[fd]->getFile();
+        if(len > file->getFileSize())
+            len = file->getFileSize();
         int blockSize = file->getBlockSize();
         char *ToRead = new char[blockSize];
         int Index = file->getIndexBlock();
