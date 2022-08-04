@@ -7,7 +7,7 @@
 #include <fcntl.h>
 
 using namespace std;
-#define DISK_SIZE 256
+#define DISK_SIZE 16
 
 class FsFile {
     int file_size;
@@ -144,13 +144,13 @@ public:
 
     }
 
-    // ------------------------------------------------------------------------
     void listAll() {//fun1
         if (!is_formated) {
             cout << "Disk is not formatted yet!" << endl;
             return;
         }
         int i = 0;
+        cout << "Empty blocks :" << EmptyBlocks << endl;
         for (auto curFile = MainDir.begin(); curFile != MainDir.end(); curFile++) {
             cout << i << ": " << curFile->first << endl;
             cout << "index: " << i << ": FileName: " << curFile->first
@@ -275,7 +275,7 @@ public:
             positions[i]='\0';
         int LettersWritten = 0; //Used to point where to continue writing from buffer
         if (FileSize == 0) {
-            if (BlocksNeeded>EmptyBlocks){
+            if (EmptyBlocks<2){
                 cout << "Not enough space"<<endl;
                 return -1;
             }
@@ -284,18 +284,21 @@ public:
                     IndexBlock = i;
                     file->setIndexBlock(IndexBlock);
                     BitVector[i] = 1;
+                    EmptyBlocks--;
                     break;
                 }
             }
-            for(int i=0,j=0;i<BitVectorSize&&j<BlocksNeeded;i++){ //Get positions of blocks to write on and take them, while adding them to "positions"
+            for(int i=0,j=0;i<BitVectorSize&&j<BlocksNeeded&&EmptyBlocks>0;i++){ //Get positions of blocks to write on and take them, while adding them to "positions"
                 if(BitVector[i]==0){
                     BitVector[i]=1;
+                    EmptyBlocks--;
                     positions[j++] = (unsigned char) i;
                     fseek(sim_disk_fd,i*blockSize,SEEK_SET);
                     fwrite(&buf[LettersWritten],1,blockSize,sim_disk_fd);
                     LettersWritten+=blockSize;
                 }
             }
+            LettersWritten=len;
             fseek(sim_disk_fd,IndexBlock*blockSize,SEEK_SET);
             fwrite(positions,1,blockSize,sim_disk_fd);//Write into index block the positions of the blocks to write on
         }
@@ -306,9 +309,10 @@ public:
             oldPositions[blockSize]='\0';
             int offset = FileSize%blockSize;
             if(offset==0){ //if offset is 0, then we need to get a new block to write on
-                for(int i=0,j=0;i<BitVectorSize&&j<BlocksNeeded;i++) { //Get positions of blocks to write on and take them, while adding them to "positions"
+                for(int i=0,j=0;i<BitVectorSize&&j<BlocksNeeded&&EmptyBlocks>0;i++) { //Get positions of blocks to write on and take them, while adding them to "positions"
                     if (BitVector[i] == 0) {
                         BitVector[i] = 1;
+                        EmptyBlocks--;
                         positions[j++] = (unsigned char) i;
                         fseek(sim_disk_fd, i * blockSize, SEEK_SET);
                         fwrite(&buf[LettersWritten], 1, blockSize, sim_disk_fd);
@@ -325,24 +329,37 @@ public:
                 fwrite(buf,1,blockSize-offset,sim_disk_fd);
                 LettersWritten+=blockSize-offset;
                 BlocksNeeded = ceil((double)(len-LettersWritten)/blockSize);
-                for(int i=0,j=0;i<BitVectorSize&&j<BlocksNeeded;i++) { //Get positions of blocks to write on and take them, while adding them to "positions"
+                int j=0;
+                if (BlocksNeeded>EmptyBlocks){
+                    file->setFileSize(FileSize+LettersWritten);
+                    file->setBlockInUse(ceil(double (file->getFileSize())/blockSize));
+                    delete[] positions;
+                    delete[] oldPositions;
+                    return -1;
+                }
+                for(int i=0;i<BitVectorSize&&j<BlocksNeeded&&EmptyBlocks>0;i++) { //Get positions of blocks to write on and take them, while adding them to "positions"
                     if (BitVector[i] == 0) {
                         BitVector[i] = 1;
+                        EmptyBlocks--;
                         positions[j++] = (unsigned char) i;
                         fseek(sim_disk_fd, i * blockSize, SEEK_SET);
                         fwrite(&buf[LettersWritten], 1, blockSize, sim_disk_fd);
-                        LettersWritten += blockSize;
+                        if(strlen(&buf[LettersWritten])>=4)
+                            LettersWritten += blockSize;
+                        else
+                            LettersWritten+= strlen(&buf[LettersWritten]);
                     }
                 }
-                strcat(oldPositions,positions);//Update positions of blocks to write on
+                for(int i=0;i<j;i++) // copy newPositions to old Positions (strcat not used because it will stop at \0)
+                    oldPositions[i+ strlen(oldPositions)] = positions[i];
                 fseek(sim_disk_fd,IndexBlock*blockSize,SEEK_SET);
                 fwrite(oldPositions,1,blockSize,sim_disk_fd);
             }
             delete[] oldPositions;
         }
-        delete[] positions;
-        file->setFileSize(FileSize+len);
+        file->setFileSize(FileSize+LettersWritten);
         file->setBlockInUse(ceil(double (file->getFileSize())/blockSize));
+        delete[] positions;
         return return_value;
     }
 
@@ -376,11 +393,12 @@ public:
             }
             BitVector[index] = 0;
         }
+        EmptyBlocks+=file->getBlockInUse()+1;
         delete MainDir[FileName]->getFile(); //After deleting all contents of the file from the disk, we delete the file pointer, then delete the fileDescriptor pointer
         delete MainDir[FileName];
         MainDir.erase(FileName);//Remove the file's name from Main Directory
         delete[] ToRead;
-        EmptyBlocks+=strlen(ToRead);
+
         return 1;
     }
 
